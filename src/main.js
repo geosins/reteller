@@ -12,8 +12,21 @@ class Reteller {
     this.chapterSeparator = chapterSeparator;
   }
 
-  async processFile(inputFileName, outputFileName) {
-    console.time('Общее время')
+  async processDirectory(inputDirectory = './books', outputDirectory = `${inputDirectory}_annotation`) {
+    const directoryContent = await fsPromises.readdir(inputDirectory, { withFileTypes: true })
+    const files = directoryContent.filter(file => file.isFile())
+    const fileNames = files.map(file => file.name)
+
+    await fsPromises.mkdir(outputDirectory, { recursive: true })
+
+    for (const fileName of fileNames) {
+      await this.processFile(inputDirectory + '/' + fileName, this.makeOutputFileName(fileName, outputDirectory));
+    }
+  }
+
+  async processFile(inputFileName, outputFileName = this.makeOutputFileName(inputFileName)) {
+    console.info(`Начата обработка файла "${inputFileName}"`);
+    console.time('Файл обработан, общее время')
     const data = await fsPromises.readFile(inputFileName, 'utf8');
 
     const text = this.extractText(data);
@@ -25,7 +38,7 @@ class Reteller {
       await this.processChapter(chapters[i], outputFile);
     }
     await outputFile.close();
-    console.timeEnd('Общее время')
+    console.timeEnd('Файл обработан, общее время')
   }
 
   extractText(data) {
@@ -80,6 +93,11 @@ class Reteller {
 
     return { title, annotationStream };
   }
+
+  makeOutputFileName(fileName, dir = '.') {
+    const name = fileName.slice(0, fileName.lastIndexOf('.'));
+    return `${dir}/${name} (краткое содержание).txt`;
+  }
 }
 
 
@@ -90,4 +108,5 @@ const llm = new OpenAI({
 });
 
 const reteller = new Reteller({ llm });
-reteller.processFile('книга.txt', 'Краткое содержание.txt');
+// reteller.processFile('книга.txt', 'Краткое содержание.txt');
+reteller.processDirectory();
