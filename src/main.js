@@ -1,13 +1,17 @@
 import * as fsPromises from "node:fs/promises"
 import OpenAI from "openai";
 
-
-const llm = new OpenAI({
-  baseURL: 'http://192.168.2.65:1234/v1/',
-  apiKey: 'not-needed',
-});
-
 class Reteller {
+  constructor({
+      llm,
+      prompt = 'Составь полный пересказ следующего текста без разбивки на ключевые события и без подведения итогов, не разделяй ответ на пункты',
+      chapterSeparator = /\n(\d+\.\s[а-яА-ЯёЁ 0-9,]+)/,
+    }) {
+    this.llm = llm;
+    this.prompt = prompt;
+    this.chapterSeparator = chapterSeparator;
+  }
+
   async processFile(inputFileName, outputFileName) {
     console.time('Общее время')
     const data = await fsPromises.readFile(inputFileName, 'utf8');
@@ -17,10 +21,8 @@ class Reteller {
 
     const outputFile = await fsPromises.open(outputFileName, 'w');
     for (let i = 0; i < chapters.length; i++) {
-      console.time(`Аннотирование главы ${i + 1} из ${chapters.length}`);
-      const { title, annotation } = await this.annotateChapter(chapters[i]);
-      await fsPromises.appendFile(outputFile, `${title}\n\n${annotation}\n\n\n}`);
-      console.timeEnd(`Аннотирование главы ${i + 1} из ${chapters.length}`);
+      console.info(`Начато аннотирование ${i + 1} главы из ${chapters.length}`);
+      await this.processChapter(chapters[i], outputFile);
     }
     await outputFile.close();
     console.timeEnd('Общее время')
@@ -32,7 +34,7 @@ class Reteller {
   }
 
   splitTextIntoChapters(text) {
-    const chaptersAndTitles = text.split(/\n(\d+\.\s[а-яА-ЯёЁ 0-9,]+)/);
+    const chaptersAndTitles = text.split(this.chapterSeparator);
 
     const chapters = [chaptersAndTitles[0]];
     for (let i = 1; i < chaptersAndTitles.length; i += 2) {
@@ -43,21 +45,43 @@ class Reteller {
     return chapters;
   }
 
+  async processChapter(chapter, outputFile) {
+    console.time(`Глава обработана`)
+    const { title, annotationStream } = await this.annotateChapter(chapter);
+
+    await fsPromises.appendFile(outputFile, `${title}\n\n`);
+
+    for await (const chunk of annotationStream) {
+      const annotateChunk = chunk.choices[0]?.delta?.content ?? ''
+      await fsPromises.appendFile(outputFile, annotateChunk.replaceAll(/\n\n/g, '\n'));
+    }
+
+    await fsPromises.appendFile(outputFile, `\n\n\n`);
+    console.timeEnd(`Глава обработана`);
+  }
+
   async annotateChapter(chapter) {
-    const prompt = 'Составь полный пересказ следующего текста'
     const title = chapter.slice(0, chapter.indexOf('\n'));
     const context = chapter.slice(chapter.indexOf('\n') + 1);
 
-    const response = await llm.chat.completions.create({
+    const annotationStream = await this.llm.chat.completions.create({
       messages: [{
         role: 'user',
-        content: `${prompt}: ${context}`
+        content: `${this.prompt}: ${context}`
       }],
+      stream: true,
     });
 
-    return { title, annotation: response.choices[0].message.content };
+    return { title, annotationStream };
   }
 }
 
-const reteller = new Reteller();
+
+const llm = new OpenAI({
+  baseURL: 'http://192.168.2.65:1234/v1/',
+  apiKey: 'not-needed',
+  timeout: 1201000,
+});
+
+const reteller = new Reteller({ llm });
 reteller.processFile('книга.txt', 'Краткое содержание.txt');
