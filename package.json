@@ -1,0 +1,12 @@
+{
+  "name": "reteller",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node ./src/main.js"
+  },
+  "dependencies": {
+    "openai": "^4.77.0"
+  }
+}
