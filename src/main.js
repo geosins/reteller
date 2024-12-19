@@ -32,6 +32,8 @@ class Reteller {
     const text = this.extractText(data);
     const chapters = this.splitTextIntoChapters(text);
 
+    this.analyze(chapters)
+
     const outputFile = await fsPromises.open(outputFileName, 'w');
     for (let i = 0; i < chapters.length; i++) {
       console.info(`Начато аннотирование ${i + 1} главы из ${chapters.length}`);
@@ -98,6 +100,20 @@ class Reteller {
     });
 
     return { title, annotationStream };
+  }
+
+  analyze(chapters) {
+    const itemCount = chapters.map(chapter => {
+      const context = chapter.slice(chapter.indexOf('\n') + 1);
+      return context.split(/([\s,.!?…—])/).length;
+    })
+
+    console.info({
+      minItems: Math.min(...itemCount),
+      averageItems: Math.ceil(itemCount.reduce((a, b) => a + b, 0) / itemCount.length),
+      maxItems: Math.max(...itemCount),
+      predictionTokenAmount: Math.ceil(Math.max(...itemCount) * 0.12 * 0.12), // maxItem * 0.12 (response tokens) * 0.12 (fault)
+    })
   }
 
   makeOutputFileName(fileName, dir = '.') {
