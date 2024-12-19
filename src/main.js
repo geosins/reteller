@@ -5,7 +5,7 @@ class Reteller {
   constructor({
       llm,
       prompt = 'Составь полный пересказ следующего текста без разбивки на ключевые события и без подведения итогов, не разделяй ответ на пункты',
-      chapterSeparator = /\n(\d+\.\s[а-яА-ЯёЁ 0-9,]+)/,
+      chapterSeparator = /\n((?:\d+\.)|(?:\[\d+\.])|(?:Интерлюдия ?\d{0,2}\.) [а-яА-ЯёЁ 0-9,]+)/,
     }) {
     this.llm = llm;
     this.prompt = prompt;
@@ -43,23 +43,29 @@ class Reteller {
 
   extractText(data) {
     const body = data.match(/<body>.*<\/body>/s); // try to find fb2 structure
-    const text = body ? body[0].replace(/<[^>]*?>/g, '') : data; // remove tags if fb2
+    const text = body ? body[0].replace(/<(?!\/?title>)[^>]*?>/g, '') : data; // remove tags if fb2 except title tag
 
     let trimmedText = text.replace(/ {2,}/g, ' ') // remove double spaces
     trimmedText = trimmedText.replace(/(\r?\n ?)+/g, '\n'); // remove empty lines
+    trimmedText = trimmedText.replace(/<title>\n?(.+?)\n?<\/title>/g, '<title>$1</title>'); // remove \n from title tag
     trimmedText = trimmedText.startsWith('\n') ? trimmedText.slice(1) : trimmedText;
 
-    return trimmedText.slice(trimmedText.indexOf('\n') + 1); // remove main title
+    return trimmedText;
   }
 
   splitTextIntoChapters(text) {
-    const chaptersAndTitles = text.split(this.chapterSeparator);
+    const chaptersAndTitles = text.includes('<title>')
+        ? text.split(/<title>(.+?)<\/title>/)
+        : text.split(this.chapterSeparator);
 
-    const chapters = [chaptersAndTitles[0]];
+    const chapters = chaptersAndTitles[0] ? [chaptersAndTitles[0]] : [];
     for (let i = 1; i < chaptersAndTitles.length; i += 2) {
       const title = chaptersAndTitles[i]
       const content = chaptersAndTitles[i + 1];
-      chapters.push(title + content);
+
+      if (content?.length > 100) {
+        chapters.push(title + content);
+      }
     }
     return chapters;
   }
@@ -108,5 +114,5 @@ const llm = new OpenAI({
 });
 
 const reteller = new Reteller({ llm });
-// reteller.processFile('книга.txt', 'Краткое содержание.txt');
-reteller.processDirectory();
+ reteller.processFile('книга.txt');
+//reteller.processDirectory();
