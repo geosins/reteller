@@ -29,8 +29,14 @@ class Reteller {
   }
 
   extractText(data) {
-    return data.replace(/(\r?\n ?)+/g, '\n');
-    // TODO: Add extraction text from fb2
+    const body = data.match(/<body>.*<\/body>/s); // try to find fb2 structure
+    const text = body ? body[0].replace(/<[^>]*?>/g, '') : data; // remove tags if fb2
+
+    let trimmedText = text.replace(/ {2,}/g, ' ') // remove double spaces
+    trimmedText = trimmedText.replace(/(\r?\n ?)+/g, '\n'); // remove empty lines
+    trimmedText = trimmedText.startsWith('\n') ? trimmedText.slice(1) : trimmedText;
+
+    return trimmedText.slice(trimmedText.indexOf('\n') + 1); // remove main title
   }
 
   splitTextIntoChapters(text) {
