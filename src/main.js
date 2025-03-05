@@ -27,15 +27,18 @@ class Reteller {
   async processFile(inputFileName, outputFileName = this.makeOutputFileName(inputFileName)) {
     console.info(`Начата обработка файла "${inputFileName}"`);
     console.time('Файл обработан, общее время')
-    const data = await fsPromises.readFile(inputFileName, 'utf8');
+    const [data, alreadyAnnotatedChaptersAmount] = await Promise.all([
+      fsPromises.readFile(inputFileName, 'utf8'),
+      this.processAlreadyAnnotatedChapters(outputFileName),
+    ]);
 
     const text = this.extractText(data);
     const chapters = this.splitTextIntoChapters(text);
 
     this.analyze(chapters)
 
-    const outputFile = await fsPromises.open(outputFileName, 'w');
-    for (let i = 0; i < chapters.length; i++) {
+    const outputFile = await fsPromises.open(outputFileName, 'a');
+    for (let i = alreadyAnnotatedChaptersAmount; i < chapters.length; i++) {
       console.info(`Начато аннотирование ${i + 1} главы из ${chapters.length}`);
       await this.processChapter(chapters[i], outputFile);
     }
@@ -70,6 +73,19 @@ class Reteller {
       }
     }
     return chapters;
+  }
+
+  async processAlreadyAnnotatedChapters(outputFileName) {
+    let chaptersAmount = 0;
+
+    try {
+      const alreadyAnnotatedText = await fsPromises.readFile(outputFileName, 'utf8');
+      const chapters = alreadyAnnotatedText.match(/.+\n\n(.+\n)+\n\n/g)
+      await fsPromises.writeFile(outputFileName, chapters.join(''))
+      chaptersAmount = chapters.length
+    } catch {}
+
+    return chaptersAmount
   }
 
   async processChapter(chapter, outputFile) {
