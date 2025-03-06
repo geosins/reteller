@@ -1,17 +1,30 @@
 import * as fsPromises from "node:fs/promises";
+import * as fs from "node:fs";
 import OpenAI from "openai";
+
+import { getCommandLineParams } from "./commandLine.js";
+
 
 class Reteller {
   constructor({
-      llm,
-      prompt = 'Составь полный пересказ следующего текста без разбивки на ключевые события и без подведения итогов, не разделяй ответ на пункты',
-      chapterSeparator = /\n((?:\d+\.)|(?:\[\d+\.])|(?:Интерлюдия ?\d{0,2}\.) [а-яА-ЯёЁ 0-9,]+)/,
-      postfix = '(краткое содержание)',
-    }) {
-    this.llm = llm;
+    postfix = '(краткое содержание)',
+    chapterSeparator = /\n((?:Глава \d+\.?[а-яА-ЯёЁ 0-9,]*)|(?:\*\*\*))/,
+    stats = false,
+    url = 'http://127.0.0.1:1234/v1/',
+    apiKey = 'not-needed',
+    timeout = 20 * 60 * 1000,
+    prompt = 'Составь полный пересказ следующего текста без разбивки на ключевые события и без подведения итогов, не разделяй ответ на пункты',
+  }) {
     this.prompt = prompt;
     this.chapterSeparator = chapterSeparator;
-    this.postfix = postfix;
+    this.postfix = postfix
+    this.stats = stats;
+
+    this.llm = new OpenAI({
+      baseURL: url,
+      apiKey,
+      timeout,
+    })
   }
 
   /**
@@ -162,12 +175,14 @@ class Reteller {
       return content.split(/([\s,.!?…—])/).length;
     })
 
-    console.info({
-      minItems: Math.min(...itemCount),
-      averageItems: Math.ceil(itemCount.reduce((a, b) => a + b, 0) / itemCount.length),
-      maxItems: Math.max(...itemCount),
-      predictionTokenAmount: Math.ceil(Math.max(...itemCount) * 0.12 * 0.12), // maxItem * 0.12 (response tokens) * 0.12 (fault)
-    })
+    if (this.stats) {
+      console.info({
+        minItems: Math.min(...itemCount),
+        averageItems: Math.ceil(itemCount.reduce((a, b) => a + b, 0) / itemCount.length),
+        maxItems: Math.max(...itemCount),
+        predictionTokenAmount: Math.ceil(Math.max(...itemCount) * 0.12 * 0.12), // maxItem * 0.12 (response tokens) * 0.12 (fault)
+      })
+    }
   }
 
   /**
@@ -182,12 +197,12 @@ class Reteller {
 }
 
 
-const llm = new OpenAI({
-  baseURL: 'http://127.0.0.1:1234/v1/',
-  apiKey: 'not-needed',
-  timeout: 1201000,
-});
+const params = getCommandLineParams()
+const reteller = new Reteller(params);
 
-const reteller = new Reteller({ llm });
- reteller.processFile('книга.txt');
-//reteller.processDirectory();
+if (fs.lstatSync(params.input).isDirectory()) {
+  void reteller.processDirectory(params.input, params.output);
+} else {
+  void reteller.processFile(params.input, params.output);
+}
+
